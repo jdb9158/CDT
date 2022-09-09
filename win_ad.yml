@@ -1,0 +1,46 @@
+# Justin Balroop
+# HW 2
+# CSEC-473
+---
+- hosts: windows
+  tasks:
+    - name: Assert mandatory variables have been set
+      assert: { that: "{{ item }} is defined" }
+      with_items:
+        - ansible_windows_domain_member # Windows Domain User
+        - domain # The Domain of the new Active Directory Forest
+        - netbios # The NetBIOS of the new Active Directory Forest
+        - domain_password # Domain Password
+        - domain_functional_level # Specifies the domain functional level of the first domain in the creation of a new forest
+        - forest_functional_level # Specifies the forest functional level for the new forest
+        - required_features # Windows Features that should be installed on the Domain Controller
+
+    - name: Ensure required Windows Features are installed
+      win_feature:
+        name: '{{ item }}'
+        include_management_tools: yes
+      with_items: "{{ required_features }}"
+
+    - name: Install Active Directory # Installs Active Directory in Windows
+      ansible.windows.win_feature: # Specifies software packages for Windows
+        name: AD-Domain-Services
+        state: present # Used to confirm or "state" that this feature is installed
+        include_sub_features: yes # Adds all subfeatures available for Active Directory
+        include_management_tools: yes # Adds all Management Tools for Active Directory
+      register: win_feature
+
+    - name: Make sure Active Directory is Running
+      ansible.builtin.systemd: # Ansible's built-in service manager
+        state: started # Used to confirm or "state" that this feature is running
+        name: AD-Domain-Services
+
+    - name: Ensure there is a Active Directory domain and forest on {{ ansible_hostname }}
+      win_domain:
+        dns_domain_name: "{{ domain }}"
+        domain_netbios_name: "{{ netbios }}"
+        safe_mode_password: "{{ domain_password }}"
+        domain_mode: "{{ domain_functional_level }}"
+        forest_mode: "{{ forest_functional_level }}"
+      register: install_domain
+      notify: Reboot if the Active Directory requires it
+      when: not ansible_windows_domain_member 
